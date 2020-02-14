@@ -22,18 +22,23 @@ export class GalenRabbit {
 
   public logger: Logger;
 
+  private client: Connection;
+
   constructor(options: GalenRabbitOptions) {
     this.options = options;
     this.logger = createBunyanLogger(options.logPath);
   }
 
-  async createClient() {
-    return createRabbitClient(this.options.amqpUrl, this.logger);
+  public async setup() {
+    this.client = await createRabbitClient(this.options.amqpUrl, this.logger);
   }
 
   // eslint-disable-next-line class-methods-use-this
-  async consume(client: Connection, channelName: string, func: Function) {
-    const channel: Channel = await client.createChannel();
+  private async consume(channelName: string, func: Function) {
+    if (!this.client) {
+      throw new Error('not setup!');
+    }
+    const channel: Channel = await this.client.createChannel();
     await channel.assertQueue(channelName);
     await channel.consume(
       channelName,
@@ -44,13 +49,12 @@ export class GalenRabbit {
     );
   }
 
-  async dynamicConsume(consumeDirPath: string) {
-    const client = await this.createClient();
+  public async dynamicConsume(consumeDirPath: string) {
     const consumePaths: string[] = await readDirFilenames(consumeDirPath);
     await consumePaths.reduce(async (promise, consumePath) => {
       await promise;
       const [channelName] = path.basename(consumePath).split('.');
-      await this.consume(client, channelName, async (message: ConsumeMessage | null) => {
+      await this.consume(channelName, async (message: ConsumeMessage | null) => {
         if (!message) {
           this.logger.error('[galen-RabbitMQ.error]: message is null');
           return;
@@ -62,9 +66,11 @@ export class GalenRabbit {
     }, Promise.resolve());
   }
 
-  async send(channelName: string, message: string, options: Options.Publish) {
-    const client = await this.createClient();
-    const channel: Channel = await client.createChannel();
+  public async send(channelName: string, message: string, options: Options.Publish) {
+    if (!this.client) {
+      throw new Error('not setup!');
+    }
+    const channel: Channel = await this.client.createChannel();
     await channel.assertQueue(channelName);
     return channel.sendToQueue(channelName, Buffer.from(message), options);
   }
