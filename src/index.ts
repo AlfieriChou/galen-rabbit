@@ -61,4 +61,11 @@ export class GalenRabbit {
       });
     }, Promise.resolve());
   }
+
+  async send(channelName: string, message: string, options: Options.Publish) {
+    const client = await this.createClient();
+    const channel: Channel = await client.createChannel();
+    await channel.assertQueue(channelName);
+    return channel.sendToQueue(channelName, Buffer.from(message), options);
+  }
 }
